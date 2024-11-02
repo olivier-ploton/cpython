@@ -50,23 +50,5 @@ def tests():
 
 ########################################
 
-import builtins
-
-class RANGE(object):
-    """
-    Enables to write range[i:j:k] in addition to range(i, j, k).
-    Main interest: also works with closed slices.
-    """
-    def __call__(self, *args):
-        return builtins.range(*args)
-
-    def __getitem__(self, arg):
-        if isinstance(arg, slice):
-            step = 1 if arg.step is None else arg.step
-            return builtins.range(arg.start, arg.stop, step)
-        else:
-            raise ValueError("only range[slice] allowed")
-
-range = RANGE()
 
 ########################################
