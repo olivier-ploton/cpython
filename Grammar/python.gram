@@ -1,5 +1,10 @@
 # PEG grammar for Python
 
+
+#    | '{' a=slices1 '}' { a }
+    # ~ | '{' a=slices1 '}' { _PyAST_Call(PyNAME("__FOO__"), (asdl_expr_seq *)_PyPegen_singleton_seq(p, a), NULL, EXTRA) }
+
+
 # https://we-like-parsers.github.io/pegen/grammar.html#subheader
 @subheader '''
 
@@ -7,37 +12,71 @@
 // as their last parameter. But this parameter is possibly lost
 // and replaced with the predefined macro EXTRA (e.g. in CNAME and SSCRIPT)
 
-// builds a name/identifier, given a C string.
-#define PYTHON_NAME(name) \
+// builds a Python name/identifier, given a C string.
+#define PyNAME(name) \
     _PyAST_Name(Py_BuildValue("s", name), Load, EXTRA)
 
-// builds name[index], as a traditional Python subscript.
-#define NAME_INDEX(name, index) \
-    _PyAST_Subscript(PYTHON_NAME(name), index, Load, EXTRA)
+// Python boolean constants
+#define PyTRUE _PyAST_Constant(Py_True, NULL, EXTRA)
+#define PyFALSE _PyAST_Constant(Py_False, NULL, EXTRA)
 
-// The quoted names must match those defined in Lib/index01.py
-#define FROM1(i) NAME_INDEX("FROM1", i)
-#define STAR1(i) NAME_INDEX("STAR1", i)
-#define CLOSED0(i) NAME_INDEX("CLOSED0", i) 
+// defines a seq with exactly 1, 2, 3 elements
+#define SEQ1(a) _PyPegen_singleton_seq(p, a)
+#define SEQ2(a, b) _PyPegen_seq_append_to_end(p, SEQ1(a), b)
+#define SEQ3(a, b, c) _PyPegen_seq_append_to_end(p, SEQ2(a, b), c)
 
-// transforms a 1-based slice/index a into a 0-based slice/index
-#define _PyAST_From1(a, EXTRA) FROM1(a)
+// calls pyname(expr), i.e. with exactly 1 argument.
+#define CALL1(pyname, expr) \
+    _PyAST_Call(pyname, (asdl_expr_seq *)SEQ1(expr), NULL, EXTRA)
+
+// calls pyname(expr1, expr2), i.e. with exactly 2 arguments.
+#define CALL2(pyname, expr1, expr2) \
+    _PyAST_Call(pyname, (asdl_expr_seq *)SEQ2(expr1, expr2), NULL, EXTRA)
+
+// calls pyname(expr1, expr2, expr3), i.e. with exactly 3 arguments.
+#define CALL3(pyname, expr1, expr2, expr3) \
+    _PyAST_Call(pyname, (asdl_expr_seq *)SEQ3(expr1, expr2, expr3), NULL, EXTRA)
+
+#define EXTENDEDKEY      PyNAME("__xkey__")             // can be any unused identifier
+#define SUBSCRIPTWRAPPER PyNAME("__subscriptwrapper__") // must match Lib/index01.py
+#define STARWRAPPER      PyNAME("__starwrapper__")      // must match Lib/index01.py
+
+// applies to a syntaxically non-slice value inside braces
+#define _PyAST_InBraces(a, EXTRA) \
+    CALL3(EXTENDEDKEY, a, PyTRUE, PyFALSE)
 
 // manages a star-expression in a 1-based slice, e.g. obj{*a}
-#define _PyAST_Star1(a, EXTRA) \
-    _PyAST_Starred(STAR1(a), Load, EXTRA)
+#define _PyAST_StarredInBraces(a, EXTRA) \
+    _PyAST_Starred(CALL2(STARWRAPPER, EXTENDEDKEY, a), Load, EXTRA)
 
 // builds and converts a 1-based (semi-open) slice, i.e. inside braces
 #define _PyAST_Slice1(a, b, c, EXTRA) \
-    FROM1(_PyAST_Slice(a, b, c, EXTRA))
+    CALL3(EXTENDEDKEY, _PyAST_Slice(a, b, c, EXTRA), PyTRUE, PyFALSE)
 
 // builds and converts a 0-based closed slice, i.e. inside brackets
 #define _PyAST_ClosedSlice(a, b, c, EXTRA) \
-    CLOSED0(_PyAST_Slice(a, b, c, EXTRA))
+    CALL3(EXTENDEDKEY, _PyAST_Slice(a, b, c, EXTRA), PyFALSE, PyTRUE)
 
 // builds and converts a 1-based closed slice, i.e. inside braces
 #define _PyAST_ClosedSlice1(a, b, c, EXTRA) \
-    CLOSED0(FROM1(_PyAST_Slice(a, b, c, EXTRA)))
+    CALL3(EXTENDEDKEY, _PyAST_Slice(a, b, c, EXTRA), PyTRUE, PyTRUE)
+
+// transforms a python name into a formal argument name
+#define FORMALARG(pyname) \
+    _PyAST_arg((pyname)->v.Name.id, NULL, NULL, EXTRA)
+
+// defines (lambda EXTENDEDKEY, /: expr)
+#define LAMBDAEXTENDEDKEY(expr) \
+    _PyAST_Lambda( \
+        _PyPegen_make_arguments(p, \
+            (asdl_arg_seq *)SEQ1(FORMALARG(EXTENDEDKEY)), \
+            NULL, NULL, NULL, NULL), \
+        expr, EXTRA)
+
+#define _PyAST_XSubscript(a, b, ctx, EXTRA) \
+    _PyAST_Subscript(CALL1(SUBSCRIPTWRAPPER, a), LAMBDAEXTENDEDKEY(b), ctx, EXTRA)
+
+
 '''
 
 @trailer '''
@@ -864,24 +903,43 @@ primary[expr_ty]:
                  (b) ? ((expr_ty) b)->v.Call.args : NULL,
                  (b) ? ((expr_ty) b)->v.Call.keywords : NULL,
                  EXTRA) }
-    | a=primary b=slices { _PyAST_Subscript(a, b, Load, EXTRA) }
+    | a=primary b=subscriptlist { _PyAST_XSubscript(a, b, Load, EXTRA) }
+    | a=primary b=tradsubscript { _PyAST_Subscript(a, b, Load, EXTRA) }
+    | a=primary b=extdsubscript { _PyAST_XSubscript(a, b, Load, EXTRA) }
     | atom
 
-# general subscript, matching e.g. [someslices] or [someslices].{someslices}.[someslices]
-slices[expr_ty]:
-    # we need at list one dot separator, so two slices_seq
-    # otherwise object[index] whould be transformed into object[(index,)]
-    | a=slices_seq '.' b='.'.slices_seq+ {
-        _PyAST_Tuple((asdl_expr_seq *)_PyPegen_join_sequences(p, a, _PyPegen_seq_flatten(p, b)), Load, EXTRA) }
-    | '[' a=slices0 ']' { a }
-    | '{' a=slices1 '}' { a }
+# matches only traditional Python subscripts
+tradsubscript[expr_ty]:
+    | '[' a=tradslices ']' { a }
 
-# [someslices] or {someslices} as a sequence of slices, even if someslices is actually a single slice
-slices_seq[asdl_seq*]:
+tradslices[expr_ty]:
+    | a=tradslice !',' { a }
+    | a[asdl_expr_seq*]=','.(tradslice | starred_expression)+ [','] { _PyAST_Tuple(a, Load, EXTRA) }
+
+tradslice[expr_ty]:
+    | a=[expression] ':' b=[expression] c=[':' d=[expression] { d }] { _PyAST_Slice(a, b, c, EXTRA) }
+    | a=named_expression { a }
+
+
+# Matches a dot-separated list of subscripts e.g. [some slices].{some slices}
+# We need at least one dot separator, so two slices_seq
+subscriptlist[expr_ty]:
+    | a=subscriptasseq '.' b='.'.subscriptasseq+ {
+        _PyAST_Tuple((asdl_expr_seq *)_PyPegen_join_sequences(
+            p, a, _PyPegen_seq_flatten(p, b)), Load, EXTRA) }
+
+# Matches [someslices] or {someslices} as a sequence of slices,
+# even if someslices is actually a single slice
+subscriptasseq[asdl_seq*]:
     | '[' a=slices0seq ']' { a }
     | '{' a=slices1seq '}' { a }
 
-# original slices rule, renamed into slices0: contents matched inside brackets
+# extended subscript, matching also closed slices
+extdsubscript[expr_ty]:
+    | '[' a=slices0 ']' { a }
+    | '{' a=slices1 '}' { a }
+
+# 0-based potentially closed slices
 slices0[expr_ty]:
     | a=slice0 !',' { a }
     | a[asdl_expr_seq*]=','.(slice0 | starred_expression)+ [','] { _PyAST_Tuple(a, Load, EXTRA) }
@@ -891,13 +949,13 @@ slices0seq[asdl_seq*]:
     | a=slice0 !',' { _PyPegen_singleton_seq(p, a) }
     | a[asdl_seq*]=','.(slice0 | starred_expression)+ [','] { a }
 
-# original slice rule, upgraded and renamed into slice0: single 0-based slice, potentially closed
+# single 0-based slice, potentially closed
 slice0[expr_ty]:
     | a=[expression] ':' b=[expression] ':' ':' c=[expression] { _PyAST_ClosedSlice(a, b, c, EXTRA) }
     | a=[expression] ':' b=[expression] c=[':' d=[expression] { d }] { _PyAST_Slice(a, b, c, EXTRA) }
     | a=named_expression { a }
 
-# original slices rule, adapted into slices1: contents matched inside curly braces
+# 0-based potentially closed slices
 slices1[expr_ty]:
     | a=slice1 !',' { a }
     | a[asdl_expr_seq*]=','.(slice1 | starred_expression1)+ [','] { _PyAST_Tuple(a, Load, EXTRA) }
@@ -909,13 +967,13 @@ slices1seq[asdl_seq*]:
 
 # conversion from 1-based to 0-based star expressions: {*a} has to be expansed into [*(x-1 for x in a)]
 starred_expression1[expr_ty]:
-    | a=starred_expression_contents { _PyAST_Star1(a, EXTRA) }
+    | a=starred_expression_contents { _PyAST_StarredInBraces(a, EXTRA) }
 
-# original slice rule, upgraded and adapted into slice1: single 1-based slice, potentially closed
+# single 1-based slice, potentially closed
 slice1[expr_ty]:
     | a=[expression] ':' b=[expression] ':' ':' c=[expression] { _PyAST_ClosedSlice1(a, b, c, EXTRA) }
     | a=[expression] ':' b=[expression] c=[':' d=[expression] { d }] { _PyAST_Slice1(a, b, c, EXTRA) }
-    | a=named_expression { _PyAST_From1(a, EXTRA) }
+    | a=named_expression { _PyAST_InBraces(a, EXTRA) }
 
 
 atom[expr_ty]:
@@ -1138,7 +1196,9 @@ star_target[expr_ty] (memo):
 
 target_with_star_atom[expr_ty] (memo):
     | a=t_primary '.' b=NAME !t_lookahead { _PyAST_Attribute(a, b->v.Name.id, Store, EXTRA) }
-    | a=t_primary b=slices !t_lookahead { _PyAST_Subscript(a, b, Store, EXTRA) }
+    | a=t_primary b=subscriptlist !t_lookahead { _PyAST_XSubscript(a, b, Store, EXTRA) }
+    | a=t_primary b=tradsubscript !t_lookahead { _PyAST_Subscript(a, b, Store, EXTRA) }
+    | a=t_primary b=extdsubscript !t_lookahead { _PyAST_XSubscript(a, b, Store, EXTRA) }    
     | star_atom
 
 star_atom[expr_ty]:
@@ -1154,11 +1214,15 @@ single_target[expr_ty]:
 
 single_subscript_attribute_target[expr_ty]:
     | a=t_primary '.' b=NAME !t_lookahead { _PyAST_Attribute(a, b->v.Name.id, Store, EXTRA) }
-    | a=t_primary b=slices !t_lookahead { _PyAST_Subscript(a, b, Store, EXTRA) }
+    | a=t_primary b=subscriptlist !t_lookahead { _PyAST_XSubscript(a, b, Store, EXTRA) }
+    | a=t_primary b=tradsubscript !t_lookahead { _PyAST_Subscript(a, b, Store, EXTRA) }
+    | a=t_primary b=extdsubscript !t_lookahead { _PyAST_XSubscript(a, b, Store, EXTRA) }
 
 t_primary[expr_ty]:
     | a=t_primary '.' b=NAME &t_lookahead { _PyAST_Attribute(a, b->v.Name.id, Load, EXTRA) }
-    | a=t_primary b=slices &t_lookahead { _PyAST_Subscript(a, b, Load, EXTRA) }
+    | a=t_primary b=subscriptlist &t_lookahead { _PyAST_XSubscript(a, b, Load, EXTRA) }
+    | a=t_primary b=tradsubscript &t_lookahead { _PyAST_Subscript(a, b, Load, EXTRA) }
+    | a=t_primary b=extdsubscript &t_lookahead { _PyAST_XSubscript(a, b, Load, EXTRA) }
     | a=t_primary b=genexp &t_lookahead {
         _PyAST_Call(a, CHECK(asdl_expr_seq*, (asdl_expr_seq*)_PyPegen_singleton_seq(p, b)), NULL, EXTRA) }
     | a=t_primary '(' b=[arguments] ')' &t_lookahead {
@@ -1177,7 +1241,9 @@ del_targets[asdl_expr_seq*]: a[asdl_expr_seq*]=','.del_target+ [','] { a }
 
 del_target[expr_ty] (memo):
     | a=t_primary '.' b=NAME !t_lookahead { _PyAST_Attribute(a, b->v.Name.id, Del, EXTRA) }
-    | a=t_primary b=slices !t_lookahead { _PyAST_Subscript(a, b, Del, EXTRA) }
+    | a=t_primary b=subscriptlist !t_lookahead { _PyAST_XSubscript(a, b, Del, EXTRA) }
+    | a=t_primary b=tradsubscript !t_lookahead { _PyAST_Subscript(a, b, Del, EXTRA) }
+    | a=t_primary b=extdsubscript !t_lookahead { _PyAST_XSubscript(a, b, Del, EXTRA) }
     | del_t_atom
 
 del_t_atom[expr_ty]:

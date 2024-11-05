@@ -11,33 +11,11 @@ import builtins
 
 ########################################
 
-class CLOSED0CONVERTER(object):
-    """
-    class of CLOSED0, and CLOSED0[slice] converts
-    a 0-based closed slice into an equivalent 0-based semi-open slice.
-    Results are wrong if slice is 1-based (but no way to check it).
-    """
-    def __getitem__(self, arg):
-        assert isinstance(arg, slice)
-        start = arg.start
-        stop = arg.stop
-        step = 1 if arg.step is None else arg.step
-        if isinstance(stop, int) and isinstance(step, int):
-            if step > 0:
-                stop = None if stop == -1 else stop+1
-            if step < 0:
-                stop = None if stop == 0 else stop-1
-        return slice(start, stop, arg.step)
-
-builtins.CLOSED0 =  CLOSED0 = CLOSED0CONVERTER()
-
-class FROM1CONVERTER(object):
-    """
-    class of FROM1, and FROM1[slice] converts
-    a 1-based semi-open slice into an equivalent 0-based semi-open slice.
-    Also works for integers. Objects of other types are returned unchanged.
-    """
-    def __getitem__(self, arg):
+def __default_xkey__(key, braces, closed):
+    """translates a key into a standard Python one"""
+    
+    def from1(arg):
+        """translates a 1-based slice/index into a 0-based one"""
         if isinstance(arg, int):
             return arg - 1
         elif isinstance(arg, slice):
@@ -50,17 +28,52 @@ class FROM1CONVERTER(object):
         else:
             return arg
 
-builtins.FROM1 = FROM1 = FROM1CONVERTER()
+    def closed0(arg):
+        """translates a 0-based closed slice into a semi-open one"""
+        assert isinstance(arg, slice)
+        start = arg.start
+        stop = arg.stop
+        step = 1 if arg.step is None else arg.step
+        if isinstance(stop, int) and isinstance(step, int):
+            if step > 0:
+                stop = None if stop == -1 else stop+1
+            elif step < 0:
+                stop = None if stop == 0 else stop-1
+        return slice(start, stop, arg.step)
+    
+    if braces: key = from1(key)
+    if closed: key = closed0(key)
+    return key
 
-class STAR1CONVERTER(object):
+class __subscriptwrapper__(object):
     """
-    Class of STAR1, and STAR1[args] applies FROM1 on each arg
-    Used in a transformation object{*args} -> object[*STAR1(args)]
-    So, args can be any iterable
+    Expected usage: e.g. obj{i} with i integer gets transformed into:
+    __subscriptwrapper__(obj)[lambda __xkey__: __xkey__(i, True, False) ]
+    which itself transforms into obj[obj.__xkey__(i, True, False)]
     """
-    def __getitem__(self, arg):
-        return tuple(FROM1[x] for x in arg)
+    def __init__(self, obj):
+        self.obj = obj
+        try:
+            self.converter = obj.__xkey__
+        except AttributeError:
+            self.converter = __default_xkey__
+        
+    def __getitem__(self, key):
+        return self.obj[key(self.converter)]
 
-builtins.STAR1 = STAR1 = STAR1CONVERTER()
+    def __setitem__(self, key, value):
+        self.obj[key(self.converter)] = value
+
+    def __delitem__(self, key):
+        del self.obj[key(self.converter)]
+    
+
+builtins.__subscriptwrapper__ = __subscriptwrapper__
+
+def __starwrapper__(__xkey__, args):
+    """applies __xkey__ to each element of args"""
+    return tuple(__xkey__(x, True, False) for x in arg)
+
+builtins.__starwrapper__ = __starwrapper__
 
 ########################################
