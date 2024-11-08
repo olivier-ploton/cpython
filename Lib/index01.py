@@ -72,7 +72,7 @@ builtins.__subscriptwrapper__ = __subscriptwrapper__
 
 def __starwrapper__(__xkey__, args):
     """applies __xkey__ to each element of args"""
-    return tuple(__xkey__(x, True, False) for x in arg)
+    return tuple(__xkey__(x, True, False) for x in args)
 
 builtins.__starwrapper__ = __starwrapper__
 

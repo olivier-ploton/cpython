@@ -101,7 +101,8 @@ class _seq(object):
 seq = _seq()
 
 # problème pour 10:0::-1 car ça se transforme en 10:None:-1 = 10::-1
-for i in seq[1:3::, -18, 5, 10:0::-1]: print(i)
+# normalement résolu avec le nouveau seq
+# for i in seq[1:3::, -18, 5, 10:0::-1]: print(i)
 
 
 ########################################
