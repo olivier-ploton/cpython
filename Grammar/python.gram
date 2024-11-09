@@ -1,11 +1,5 @@
 # PEG grammar for Python
 
-
-#    | '{' a=slices1 '}' { a }
-    # ~ | '{' a=slices1 '}' { _PyAST_Call(PyNAME("__FOO__"), (asdl_expr_seq *)_PyPegen_singleton_seq(p, a), NULL, EXTRA) }
-
-
-# https://we-like-parsers.github.io/pegen/grammar.html#subheader
 @subheader '''
 
 // To mimic existing functions, some of these macros take EXTRA

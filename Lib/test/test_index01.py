@@ -335,6 +335,18 @@ class Index01TestCase_xkey(unittest.TestCase):
         self.assertEqual(reveal{1:2::}, CLOSED(BRACED(slice(1, 2))))
         self.assertEqual(reveal{:2::3}, CLOSED(BRACED(slice(None, 2, 3))))
         self.assertEqual(reveal{:2::}, CLOSED(BRACED(slice(None, 2))))
+    
+    def test_del(self):
+        s = list("ABCDEFG")
+        for i in range(-len(s)-2, len(s)+3):
+            for j in range(-len(s)-2, len(s)+3):
+                with self.subTest(i=i, j=j):
+                    x = s[:]
+                    y = s[:]
+                    del x[i:j]
+                    del y{i+1:j+1}
+                    self.assertEqual(x, y)
+
 
 if __name__ == "__main__":
     unittest.main()

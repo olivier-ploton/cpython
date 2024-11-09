@@ -12,7 +12,9 @@ import builtins
 ########################################
 
 def __default_xkey__(key, braces, closed):
-    """translates a key into a standard Python one"""
+    """
+    translates an extended key into an equivalent standard Python key
+    """
     
     def from1(arg):
         """translates a 1-based slice/index into a 0-based one"""
@@ -47,7 +49,7 @@ def __default_xkey__(key, braces, closed):
 
 class __subscriptwrapper__(object):
     """
-    Expected usage: e.g. obj{i} with i integer gets transformed into:
+    Expected usage: e.g. obj{i} with i single value gets transformed into:
     __subscriptwrapper__(obj)[lambda __xkey__: __xkey__(i, True, False) ]
     which itself transforms into obj[obj.__xkey__(i, True, False)]
     """
@@ -71,7 +73,10 @@ class __subscriptwrapper__(object):
 builtins.__subscriptwrapper__ = __subscriptwrapper__
 
 def __starwrapper__(__xkey__, args):
-    """applies __xkey__ to each element of args"""
+    """
+    Applies __xkey__ to each element of args. Expected usage:
+    transform obj{*s} into obj[*(__xkey__(key, ...) for key in s)]
+    """
     return tuple(__xkey__(x, True, False) for x in args)
 
 builtins.__starwrapper__ = __starwrapper__
