@@ -5,7 +5,8 @@ Currently implemented features:
   * 1-based indices or slices: for `i`, `j` integers, `a{i}` means `a[i-1]`, `a{i:j:k}` means `a[i-1:j-1:k]`
   * Starred expressions are accepted, e.g. `a{i, *s, j}` means `a[i, *(h-1 for h in s), j]`
   * Closed slices with bound `j` included: `:j::`, `i:j::`, `:j::k`, `i:j::k` (with a double colon after `j`)
-  * Mixing 0-based and 1-based indices in the same subscript: `a[i].{j}` means `a[0-based i, 1-based j]` i.e. `a[i, j-1]`
+  * Mixing 0-based and 1-based indices in the same subscript:
+    `a[i].{j}` means `a[0-based i, 1-based j]` i.e. `a[i, j-1]`
     
     As a comparison, `a[i]{j}` means as usual `a[0-based i][1-based j]` i.e. `a[i][j-1]`
   * Class-based customization: if the class of the indexed object `a`
@@ -49,7 +50,7 @@ Technically, it works this way:
         
   * `__subscriptwrapper__`, `__starwrapper__` (along with the default `__xkey__`)
     are defined in `Lib/index01.py` and exported into `builtins`
-    so that they are known everywhere witout being qualified.
+    so that they are known everywhere without being qualified.
     
   * `Lib/index01` is imported in `Lib/site.py`
 
@@ -63,7 +64,10 @@ It passes all tests but 2, which fail for good reasons:
 I have commented out the failing parts of these tests (and only them).
 I have also added unittests for the proposed features, in `test_index01.py`.
 
-Feel free to play with these new proposed notations. Here are some demos:
-  * `XXX.py`: 
+Feel free to play with these new proposed notations. Here are some demos, in `DEMOS`:
+  * [`basicdemos.py`](DEMOS/basicdemos.py):
+    some basic demos of proposed features
+  * [`closedslices.py`](DEMOS/closedslices.py):
+    several use cases for closed slices, e.g. `for i in seq[1:n::]`
 
 Enjoy !
