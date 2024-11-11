@@ -5,12 +5,6 @@ unittests for 1-based indexing and relatives
 import unittest
 from test import support
 
-class Reveal:
-    def __getitem__(self, arg):
-        return arg
-
-reveal = Reveal()
-
 class Index01TestCase_SingleKey(unittest.TestCase):
 
     def test_integer_in_braces(self):
@@ -309,6 +303,17 @@ class Index01TestCase_xkey(unittest.TestCase):
         self.assertEqual(reveal{1}.[2], (BRACED(1), 2))
         self.assertEqual(reveal[1].{2}, (1, BRACED(2)))
     
+    def test_attribute(self):
+        """
+        verify that there is no interference between [i].[j] and obj.attribute
+        """
+        self.assertEqual(reveal[1].__class__, int)
+        self.assertEqual(reveal{1}.__class__, BRACED)
+        self.assertEqual(reveal[1, 2].__class__, tuple)
+        self.assertEqual(reveal{1, 2}.__class__, tuple)
+        self.assertEqual(reveal{1}.[2].__class__, tuple)
+        self.assertEqual(reveal[1].{2}.__class__, tuple)
+    
     def test_star(self):
         x = (7, 8, 9)
         
@@ -345,6 +350,18 @@ class Index01TestCase_xkey(unittest.TestCase):
                     y = s[:]
                     del x[i:j]
                     del y{i+1:j+1}
+                    self.assertEqual(x, y)
+
+    def test_store(self):
+        s = list("ABCDEFG")
+        for i in range(-len(s)-2, len(s)+3):
+            for j in range(-len(s)-2, len(s)+3):
+                with self.subTest(i=i, j=j):
+                    x = s[:]
+                    y = s[:]
+                    z = "X" * len(x[i:j])
+                    x[i:j] = z
+                    y{i+1:j+1} = z
                     self.assertEqual(x, y)
 
 
