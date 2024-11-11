@@ -159,6 +159,8 @@ def testexpansions():
     printexpansion("a{i, *s, j}", "a[i].{j}")
 
 PRINT("Implemetation detail: AST expansion of extended indices")
-testexpansions()
+
+print("Uncomment # testexpansions() if you wish to try it")
+# testexpansions()
 
 ########################################
